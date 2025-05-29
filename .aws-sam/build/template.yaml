@@ -1,0 +1,166 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: websock-chat
+Transform:
+- AWS::Serverless-2016-10-31
+Globals:
+  Function:
+    Tracing: Active
+    LoggingConfig:
+      LogFormat: JSON
+  Api:
+    TracingEnabled: true
+Resources:
+  ConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: connections
+      AttributeDefinitions:
+      - AttributeName: connectionId
+        AttributeType: S
+      - AttributeName: groupId
+        AttributeType: S
+      KeySchema:
+      - AttributeName: connectionId
+        KeyType: HASH
+      GlobalSecondaryIndexes:
+      - IndexName: groupId-index
+        KeySchema:
+        - AttributeName: groupId
+          KeyType: HASH
+        Projection:
+          ProjectionType: KEYS_ONLY
+      BillingMode: PAY_PER_REQUEST
+  ChatApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: ChatApi
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: $request.body.action
+  WebChatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+      - x86_64
+      CodeUri: WebChatFunction
+      Handler: webchat.handler
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: ConnectionsTable
+      - Statement:
+        - Effect: Allow
+          Action:
+          - execute-api:ManageConnections
+          Resource:
+            Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ChatApi}/*/POST/@connections/*
+      Environment:
+        Variables:
+          TABLE_NAME:
+            Ref: ConnectionsTable
+          NODE_OPTIONS: ' --enable-source-maps'
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        EntryPoints:
+        - webchat.ts
+        External:
+        - '@aws-sdk/lib-dynamodb'
+        - '@aws-sdk/client-dynamodb'
+        - '@aws-sdk/client-apigatewaymanagementapi'
+        Minify: true
+        Sourcemap: true
+        Target: es2020
+      SamResourceId: WebChatFunction
+  WebChatPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Ref: WebChatFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ChatApi}/*
+  WebChatIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId:
+        Ref: ChatApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebChatFunction.Arn}/invocations
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId:
+        Ref: ChatApi
+      RouteKey: $connect
+      AuthorizationType: NONE
+      OperationName: Connect Route
+      Target:
+        Fn::Sub: integrations/${WebChatIntegration}
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId:
+        Ref: ChatApi
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      OperationName: Disconnect Route
+      Target:
+        Fn::Sub: integrations/${WebChatIntegration}
+  SendRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId:
+        Ref: ChatApi
+      RouteKey: send
+      AuthorizationType: NONE
+      OperationName: Send Route
+      Target:
+        Fn::Sub: integrations/${WebChatIntegration}
+  RegisterRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId:
+        Ref: ChatApi
+      RouteKey: register
+      AuthorizationType: NONE
+      OperationName: Register Route
+      Target:
+        Fn::Sub: integrations/${WebChatIntegration}
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId:
+        Ref: ChatApi
+      RouteKey: $default
+      AuthorizationType: NONE
+      OperationName: Default Route
+      Target:
+        Fn::Sub: integrations/${WebChatIntegration}
+  Deployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    DependsOn:
+    - ConnectRoute
+    - DisconnectRoute
+    - SendRoute
+    - RegisterRoute
+    - DefaultRoute
+    Properties:
+      ApiId:
+        Ref: ChatApi
+  Stage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId:
+        Ref: ChatApi
+      StageName: prod
+      DeploymentId:
+        Ref: Deployment
+      AutoDeploy: true
+Outputs:
+  WebSocketURI:
+    Description: WSS protocol URI to connect to the WebSocket Chat
+    Value:
+      Fn::Sub: wss://${ChatApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}

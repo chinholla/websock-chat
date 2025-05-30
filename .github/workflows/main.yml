@@ -18,10 +18,8 @@ jobs:
       with:
         node-version: '18'
 
-    - name: Install AWS CLI & SAM CLI
-      run: |
-        pip install awscli
-        pip install aws-sam-cli
+    - name: Setup SAM CLI
+      run: aws-actions/setup-sam@v2
 
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v2
@@ -29,9 +27,12 @@ jobs:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: us-east-1
-    
+
     - name: Install dependencies
-      run: npm install --prefix web-chat
+      run: npm i
+    
+    - name: Install esbuild for bundling
+      run: npm install -g esbuild
 
     - name: Build SAM App
       run: sam build
@@ -39,7 +40,7 @@ jobs:
     - name: Deploy SAM App
       run: |
         sam deploy \
-          --stack-name websock-chat \
+          --stack-name ${{ secrets.STACK_NAME }} \
           --region us-east-1 \
           --capabilities CAPABILITY_IAM \
           --no-confirm-changeset \

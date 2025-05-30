@@ -26,8 +26,8 @@ jobs:
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-access-key-id: ASIA343VWCI4RLUPYA7K
+        aws-secret-access-key: XksWzD6TL0+T0uUfyF9n9+hT+k2CfsZ1b+yrHlqJ
         aws-region: us-east-1
 
     - name: Build SAM App

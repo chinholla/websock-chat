@@ -3,7 +3,7 @@ name: Deploy SAM WebSocket API
 on:
   push:
     branches:
-      - main  # or 'master'
+      - main
 
 jobs:
   deploy:
@@ -19,7 +19,7 @@ jobs:
         node-version: '18'
 
     - name: Setup SAM CLI
-      run: aws-actions/setup-sam@v2
+      run: pip install aws-sam-cli
 
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v2
@@ -31,7 +31,7 @@ jobs:
     - name: Install dependencies
       run: npm i
     
-    - name: Install esbuild for bundling
+    - name: Install esbuild
       run: npm install -g esbuild
 
     - name: Build SAM App
